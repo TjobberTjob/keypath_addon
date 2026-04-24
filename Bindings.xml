@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="WCLHOVER_SHOW" header="WCLHOVER" runOnUp="false" category="ADDONS">
+        WCLHover_ShowHovered()
+    </Binding>
+    <Binding name="WCLHOVER_TARGET" runOnUp="false" category="ADDONS">
+        WCLHover_ShowTarget()
+    </Binding>
+</Bindings>
