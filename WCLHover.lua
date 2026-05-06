@@ -313,7 +313,56 @@ local function playerLfgRole()
     return nil
 end
 
+-- Comma-joined roles of every current party member, pulled directly
+-- from WoW's API. Used to drive the overlay's title-bar slot
+-- indicators so the M+ composition strip reflects WoW reality instead
+-- of stale accept-click bookkeeping. Returns nil when the player is
+-- not in a group (overlay clears synthesized party entries on its own
+-- in that case).
+local function partyRolesString()
+    if not IsInGroup or not IsInGroup() then return nil end
+    local roles = {}
+    local pr = UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+    if pr == "TANK" or pr == "HEALER" or pr == "DAMAGER" then
+        roles[#roles + 1] = pr
+    end
+    local total = (GetNumGroupMembers and GetNumGroupMembers()) or 0
+    for i = 1, math.max(0, total - 1) do
+        local unit = "party" .. i
+        if UnitExists and UnitExists(unit) then
+            local r = UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit)
+            if r == "TANK" or r == "HEALER" or r == "DAMAGER" then
+                roles[#roles + 1] = r
+            end
+        end
+    end
+    return table.concat(roles, ",")
+end
+
+-- Whether the player is the group leader (or solo). Only leaders can
+-- act on LFG applicants, so the overlay greys out the ✓/✕ buttons when
+-- this is false.
+local function playerIsLeader()
+    if not IsInGroup or not IsInGroup() then return true end
+    return UnitIsGroupLeader and UnitIsGroupLeader("player") or false
+end
+
 local function buildRosterPayload()
+    -- Gate: only render the grid when actually "searching for players".
+    -- That means either the user has an active LFG listing (waiting on
+    -- applicants), or the LFG search browser is open with results.
+    -- Outside those windows the grid stays hidden — previously it would
+    -- emit just from the player having a role assigned, which lit up the
+    -- overlay all the time.
+    local hasActiveEntry = C_LFGList and C_LFGList.HasActiveEntry
+                           and C_LFGList.HasActiveEntry() or false
+    local searchFrameShown = LFGListFrame and LFGListFrame:IsShown()
+    local applicants = getApplicantIDs()
+    local results = searchFrameShown and getSearchResultIDs() or {}
+    if not hasActiveEntry and #applicants == 0 and #results == 0 then
+        return nil
+    end
+
     local region = currentRegion()
     local lines = {}
     local target = detectListingTargetKey()
@@ -328,36 +377,60 @@ local function buildRosterPayload()
         lines[#lines + 1] = "LEADER|" .. mine
     end
 
-    -- Trust the API: if Blizzard hands us applicant IDs, render them.
-    -- Gating on HasActiveEntry / LFGListFrame:IsShown turned out to reject
-    -- legitimate data on some client paths. The grid auto-hides whenever
-    -- GetApplicants + GetSearchResults both return empty, which is enough
-    -- to clear itself on delist.
-    -- Keep the native API order — C_LFGList.GetApplicants already returns
-    -- IDs in the order Blizzard's Applicant Viewer displays them.
-    for _, applicantID in ipairs(getApplicantIDs()) do
+    -- LEADER_STATUS sentinel: whether the user is the group leader.
+    -- Overlay disables invite/decline buttons when this is "false".
+    lines[#lines + 1] = "LEADER_STATUS|"
+        .. (playerIsLeader() and "true" or "false")
+
+    -- PARTY sentinel: real party composition from UnitGroupRolesAssigned.
+    -- Source of truth for the M+ slot strip — replaces the older
+    -- "infer from accept-clicks" heuristic that drifted out of sync.
+    local partyRoles = partyRolesString()
+    if partyRoles then
+        lines[#lines + 1] = "PARTY|" .. partyRoles
+    end
+
+    -- Filter out applicants Blizzard keeps in GetApplicants() after they
+    -- cancelled, were declined, or timed out — those IDs hang around
+    -- until the listing closes, but their rows shouldn't stay in the
+    -- overlay. We require BOTH applicationStatus and
+    -- pendingApplicationStatus to be in an "active" state — when a
+    -- player cancels, Blizzard sometimes flips the pending field first
+    -- and the live one only catches up on the next refresh.
+    -- Keep the native API order: C_LFGList.GetApplicants returns IDs
+    -- in the order Blizzard's Applicant Viewer displays them.
+    local function isActiveStatus(s)
+        return s == nil or s == "" or s == "none"
+            or s == "applied" or s == "invited"
+    end
+    for _, applicantID in ipairs(applicants) do
         local info = C_LFGList.GetApplicantInfo(applicantID)
-        local members = (info and info.numMembers) or 0
-        for m = 1, members do
-            -- Positional return: name, classFile, localizedClass, level,
-            -- itemLevel, honorLevel, tank, healer, damage, assignedRole,
-            -- relationship, dungeonScore (= in-game M+ rating).
-            local full, classFile, _lcl, _lvl, itemLevel, _hlvl,
-                  _tank, _healer, _dps, role, _rel, dungeonScore =
-                  C_LFGList.GetApplicantMemberInfo(applicantID, m)
-            if type(full) == "string" and full ~= "" then
-                local n, r = splitName(full)
-                if n then
-                    lines[#lines + 1] = makeEntry(
-                        region, n, r, classFile, applicantID,
-                        dungeonScore, target, role, itemLevel
-                    )
+        local active = info
+            and isActiveStatus(info.applicationStatus)
+            and isActiveStatus(info.pendingApplicationStatus)
+        if active then
+            local members = (info and info.numMembers) or 0
+            for m = 1, members do
+                -- Positional return: name, classFile, localizedClass, level,
+                -- itemLevel, honorLevel, tank, healer, damage, assignedRole,
+                -- relationship, dungeonScore (= in-game M+ rating).
+                local full, classFile, _lcl, _lvl, itemLevel, _hlvl,
+                      _tank, _healer, _dps, role, _rel, dungeonScore =
+                      C_LFGList.GetApplicantMemberInfo(applicantID, m)
+                if type(full) == "string" and full ~= "" then
+                    local n, r = splitName(full)
+                    if n then
+                        lines[#lines + 1] = makeEntry(
+                            region, n, r, classFile, applicantID,
+                            dungeonScore, target, role, itemLevel
+                        )
+                    end
                 end
             end
         end
     end
 
-    for _, resultID in ipairs(getSearchResultIDs()) do
+    for _, resultID in ipairs(results) do
         local info = C_LFGList.GetSearchResultInfo(resultID)
         if type(info) == "table" and info.leaderName then
             local n, r = splitName(info.leaderName)
