@@ -489,22 +489,66 @@ local lastBuiltPayload
 
 local function refreshScreenGrid()
     if not WCLScreenGrid then return end
-    local payload = buildRosterPayload()
+    -- pcall the entire build+render path. A Lua error inside the
+    -- ticker callback used to silently kill subsequent ticks (the
+    -- ticker itself stays alive, but `lastBuiltPayload` could get
+    -- stuck on stale data and the grid would never recover until the
+    -- user /reload'd). Failing the current refresh is fine — the next
+    -- one runs with cleared state.
+    local ok, payload = pcall(buildRosterPayload)
+    if not ok then
+        lastBuiltPayload = nil
+        return
+    end
     if payload == lastBuiltPayload then return end
     lastBuiltPayload = payload
     if payload then
-        WCLScreenGrid.Render(payload)
+        pcall(WCLScreenGrid.Render, payload)
     else
-        WCLScreenGrid.Hide()
+        pcall(WCLScreenGrid.Hide)
     end
 end
 
--- Events for LFG list changes don't always fire reliably across every
--- client version + scenario (listed-but-finder-closed was the reported
--- gap). Plain 1-second polling of buildRosterPayload keeps the grid in
--- sync regardless; the payload build is cheap (just API calls + string
--- concat) so the cost is negligible.
+-- Force the next refresh to re-emit even if the payload string is
+-- identical. Used by /wcl reset and by event handlers after group
+-- transitions where the API briefly returns stale data and we want
+-- the next poll to act on whatever the API reports without skipping.
+local function forceNextRefresh()
+    lastBuiltPayload = nil
+end
+
+-- Polling every 1 s as a safety net — catches anything the events
+-- below miss across client versions / weird transitions.
 C_Timer.NewTicker(1.0, function()
+    refreshScreenGrid()
+end)
+
+-- Event-driven refresh: triggers an immediate rebuild whenever LFG or
+-- group state changes. Joining a group, becoming a leader, the search
+-- results landing, applicants arriving — all of these used to wait up
+-- to 1 s for the next poll, and if a transient API state lined up
+-- with that poll the grid could stay stuck on the previous payload.
+-- Events fire ahead of the poll so the user-visible delay is gone,
+-- and the cache is invalidated so the next refresh can't short-circuit.
+local lfgEvents = CreateFrame("Frame")
+local watchedEvents = {
+    "LFG_LIST_ACTIVE_ENTRY_UPDATE",
+    "LFG_LIST_APPLICANT_LIST_UPDATED",
+    "LFG_LIST_APPLICANT_UPDATED",
+    "LFG_LIST_SEARCH_RESULTS_RECEIVED",
+    "LFG_LIST_SEARCH_RESULT_UPDATED",
+    "LFG_LIST_AVAILABILITY_UPDATE",
+    "LFG_LIST_ROLE_UPDATE",
+    "GROUP_ROSTER_UPDATE",
+    "PARTY_LEADER_CHANGED",
+    "PLAYER_ROLES_ASSIGNED",
+    "PLAYER_ENTERING_WORLD",
+}
+for _, ev in ipairs(watchedEvents) do
+    lfgEvents:RegisterEvent(ev)
+end
+lfgEvents:SetScript("OnEvent", function()
+    forceNextRefresh()
     refreshScreenGrid()
 end)
 
@@ -616,6 +660,18 @@ SlashCmdList["WCLHOVER"] = function(msg)
         WCLHoverDB = WCLHoverDB or {}
         WCLHoverDB.screenGridPos = nil
         chatPrint("Grid position reset. /reload to re-anchor top-left.")
+        return
+    end
+
+    if msg == "reset" then
+        -- Hard-reset for the case where the addon's emission loop has
+        -- got stuck on stale state. Clears the payload cache + tells
+        -- the screen grid to drop its cached bytes; the next poll will
+        -- rebuild from scratch and re-render whatever the API reports.
+        forceNextRefresh()
+        if WCLScreenGrid and WCLScreenGrid.Hide then WCLScreenGrid.Hide() end
+        refreshScreenGrid()
+        chatPrint("Reset — grid re-evaluated against current API state.")
         return
     end
 
