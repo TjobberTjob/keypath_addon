@@ -694,6 +694,17 @@ SlashCmdList["WCLHOVER"] = function(msg)
         return
     end
 
+    if msg == "size" then
+        local current = (WCLScreenGrid and WCLScreenGrid.GetCellSize
+                         and WCLScreenGrid.GetCellSize()) or "?"
+        local cfg = (WCLHoverLocalConfig and WCLHoverLocalConfig.cellSize)
+                    or "<none>"
+        chatPrint(("CELL_SIZE = %s; LocalConfig.cellSize = %s"):format(
+            tostring(current), tostring(cfg)
+        ))
+        return
+    end
+
     if msg == "reset" then
         -- Hard-reset for the case where the addon's emission loop has
         -- got stuck on stale state. Clears the payload cache + tells

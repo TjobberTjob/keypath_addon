@@ -196,3 +196,10 @@ function SG.SetCellSize(n)
     lastBytes = {}  -- positions change with cell size; re-place everything
     return true
 end
+
+-- Read accessor for the current cell size, used by the /wcl size
+-- diagnostic so we can verify what the addon actually has loaded
+-- without having to dump random tables to chat.
+function SG.GetCellSize()
+    return CELL_SIZE
+end
