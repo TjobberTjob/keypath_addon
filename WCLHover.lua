@@ -347,21 +347,55 @@ local function playerIsLeader()
     return UnitIsGroupLeader and UnitIsGroupLeader("player") or false
 end
 
+-- True iff a given LFG activityID belongs to the M+ or current-raid
+-- categories. We use the activity info's `isMythicPlusActivity` and
+-- `isCurrentRaidActivity` flags so we don't have to hard-code category
+-- IDs (Blizzard reshuffles those across patches).
+local function isPvEActivity(activityID)
+    if not (C_LFGList and C_LFGList.GetActivityInfoTable) then return false end
+    local info = C_LFGList.GetActivityInfoTable(activityID)
+    if type(info) ~= "table" then return false end
+    if info.isMythicPlusActivity then return true end
+    if info.isCurrentRaidActivity then return true end
+    -- Fallback: categoryID 3 has been the raid category for years.
+    -- Keeps us correct on older / pre-tier raids that don't get the
+    -- isCurrentRaidActivity flag.
+    if info.categoryID == 3 then return true end
+    return false
+end
+
+-- True iff the player's active LFG entry (their own listing) is a M+
+-- key or a raid. Returns false for PvP entries, custom listings, etc.
+-- The grid only emits in this case — when the user is browsing or
+-- applying to *other* groups, we stay hidden.
+local function activeEntryIsPvE()
+    if not (C_LFGList and C_LFGList.GetActiveEntryInfo) then return false end
+    local entry = C_LFGList.GetActiveEntryInfo()
+    if type(entry) ~= "table" then return false end
+    if entry.activityID and isPvEActivity(entry.activityID) then
+        return true
+    end
+    -- Some client paths return activityIDs (array) instead of a single
+    -- activityID. If any selected activity is PvE we treat the entry
+    -- as PvE.
+    if type(entry.activityIDs) == "table" then
+        for _, aid in ipairs(entry.activityIDs) do
+            if isPvEActivity(aid) then return true end
+        end
+    end
+    return false
+end
+
 local function buildRosterPayload()
-    -- Gate: only render the grid when actually "searching for players".
-    -- That means either the user has an active LFG listing (waiting on
-    -- applicants), or the LFG search browser is open with results.
-    -- Outside those windows the grid stays hidden — previously it would
-    -- emit just from the player having a role assigned, which lit up the
-    -- overlay all the time.
-    local hasActiveEntry = C_LFGList and C_LFGList.HasActiveEntry
-                           and C_LFGList.HasActiveEntry() or false
-    local searchFrameShown = LFGListFrame and LFGListFrame:IsShown()
-    local applicants = getApplicantIDs()
-    local results = searchFrameShown and getSearchResultIDs() or {}
-    if not hasActiveEntry and #applicants == 0 and #results == 0 then
+    -- Gate: emit the grid only when the user is leading their own
+    -- PvE listing (M+ key or raid). Browsing the group finder /
+    -- applying to other groups is intentionally excluded — the
+    -- overlay is for evaluating *your* applicants, not for shopping
+    -- around as one yourself.
+    if not activeEntryIsPvE() then
         return nil
     end
+    local applicants = getApplicantIDs()
 
     local region = currentRegion()
     local lines = {}
@@ -430,36 +464,11 @@ local function buildRosterPayload()
         end
     end
 
-    for _, resultID in ipairs(results) do
-        local info = C_LFGList.GetSearchResultInfo(resultID)
-        if type(info) == "table" and info.leaderName then
-            local n, r = splitName(info.leaderName)
-            if n then
-                local classFile, itemLevel
-                if C_LFGList.GetSearchResultMemberInfo then
-                    local ok, _, cf, _lcl, _lvl, ilv = pcall(
-                        C_LFGList.GetSearchResultMemberInfo, resultID, 1
-                    )
-                    if ok then
-                        classFile = cf
-                        itemLevel = ilv
-                    end
-                end
-                local score = info.leaderOverallDungeonScore
-                              or info.leaderDungeonScore
-                -- For browser results, parse each listing's own "+NN".
-                local perListingTarget
-                if info.name then
-                    local tn = info.name:match("%+%s*(%d%d?)")
-                    if tn then perListingTarget = tonumber(tn) end
-                end
-                lines[#lines + 1] = makeEntry(
-                    region, n, r, classFile, nil, score,
-                    perListingTarget or target, nil, itemLevel
-                )
-            end
-        end
-    end
+    -- Note: previously this block also emitted search-result leaders
+    -- (so the overlay showed parses for the groups you were browsing).
+    -- That fired even when the user was applying out, which lit up the
+    -- companion at the wrong time. The grid is now scoped to the
+    -- user's own M+ / raid listing only.
 
     if #lines == 0 then return nil end
 
