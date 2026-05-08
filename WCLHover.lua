@@ -564,7 +564,19 @@ lfgEvents:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_ENTERING_WORLD" then
         if WCLHoverLocalConfig and WCLHoverLocalConfig.cellSize
            and WCLScreenGrid and WCLScreenGrid.SetCellSize then
-            WCLScreenGrid.SetCellSize(WCLHoverLocalConfig.cellSize)
+            local applied = WCLScreenGrid.SetCellSize(
+                WCLHoverLocalConfig.cellSize
+            )
+            -- One-shot status print so the user can confirm the
+            -- companion-written value reached the addon. Without
+            -- this a missing LocalConfig.lua / wrong addon dir
+            -- looked identical to "size unchanged" in-game.
+            chatPrint(("grid cell size = %s (LocalConfig)%s"):format(
+                tostring(WCLHoverLocalConfig.cellSize),
+                applied and "" or " — REJECTED"
+            ))
+        else
+            chatPrint("grid cell size = 4 (default — no LocalConfig)")
         end
     end
     forceNextRefresh()
