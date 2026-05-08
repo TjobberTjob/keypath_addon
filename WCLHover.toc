@@ -8,3 +8,4 @@
 Bindings.xml
 WCLHover.lua
 ScreenGrid.lua
+LocalConfig.lua

@@ -556,7 +556,17 @@ local watchedEvents = {
 for _, ev in ipairs(watchedEvents) do
     lfgEvents:RegisterEvent(ev)
 end
-lfgEvents:SetScript("OnEvent", function()
+lfgEvents:SetScript("OnEvent", function(_, event)
+    -- PLAYER_ENTERING_WORLD also doubles as our "all files loaded"
+    -- hook for applying companion-written overrides — LocalConfig.lua
+    -- is loaded by the .toc but globals declared there aren't usable
+    -- until the addon's main chunks have all run.
+    if event == "PLAYER_ENTERING_WORLD" then
+        if WCLHoverLocalConfig and WCLHoverLocalConfig.cellSize
+           and WCLScreenGrid and WCLScreenGrid.SetCellSize then
+            WCLScreenGrid.SetCellSize(WCLHoverLocalConfig.cellSize)
+        end
+    end
     forceNextRefresh()
     refreshScreenGrid()
 end)
