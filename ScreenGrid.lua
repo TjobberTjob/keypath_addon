@@ -182,18 +182,26 @@ function SG.Hide()
 end
 
 -- Runtime cell-size tuning via `/wcl grid size N`.
+-- Drops the entire texture pool and lets the next Render rebuild it
+-- from scratch — earlier we just resized the existing textures in
+-- place, but on at least some clients that left them rendering at the
+-- old size even after SetSize / SetPoint, so resizes appeared to do
+-- nothing visually. Tearing them down avoids any stale state.
 function SG.SetCellSize(n)
     n = tonumber(n)
     if not n or n < 2 or n > 16 then return false end
     CELL_SIZE = math.floor(n)
     for _, t in pairs(texturePool) do
-        t:SetSize(CELL_SIZE, CELL_SIZE)
+        t:Hide()
+        t:ClearAllPoints()
+        t:SetTexture(nil)
     end
+    texturePool = {}
     if frame then
         frame:SetSize(GRID_COLS * CELL_SIZE, CELL_SIZE)
     end
     lastPayload = nil
-    lastBytes = {}  -- positions change with cell size; re-place everything
+    lastBytes = {}
     return true
 end
 
