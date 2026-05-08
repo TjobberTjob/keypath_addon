@@ -547,14 +547,19 @@ local watchedEvents = {
     "LFG_LIST_SEARCH_RESULTS_RECEIVED",
     "LFG_LIST_SEARCH_RESULT_UPDATED",
     "LFG_LIST_AVAILABILITY_UPDATE",
-    "LFG_LIST_ROLE_UPDATE",
     "GROUP_ROSTER_UPDATE",
     "PARTY_LEADER_CHANGED",
     "PLAYER_ROLES_ASSIGNED",
     "PLAYER_ENTERING_WORLD",
 }
+-- pcall each register so a single bad event name (Blizzard removes /
+-- renames events between patches) can't abort the rest of the chunk
+-- and silently take the slash commands + later globals down with it.
+-- LFG_LIST_ROLE_UPDATE was the original offender — it threw at load
+-- time, which left /wcl unregistered while the 1 Hz grid ticker
+-- (registered earlier in the file) kept drawing, masking the failure.
 for _, ev in ipairs(watchedEvents) do
-    lfgEvents:RegisterEvent(ev)
+    pcall(lfgEvents.RegisterEvent, lfgEvents, ev)
 end
 lfgEvents:SetScript("OnEvent", function(_, event)
     -- PLAYER_ENTERING_WORLD also doubles as our "all files loaded"
