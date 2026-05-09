@@ -369,16 +369,18 @@ end
 -- The grid only emits in this case — when the user is browsing or
 -- applying to *other* groups, we stay hidden.
 --
--- The HasActiveEntry() primary gate matters because GetActiveEntryInfo
--- briefly continues to return the last entry's table after the player
--- delists; without HasActiveEntry the grid stayed visible for several
--- polls after the user pressed Stop Listing.
+-- HasActiveEntry() is consulted only as a *negative* signal: if it
+-- exists and explicitly returns false, we treat the entry as gone
+-- even though GetActiveEntryInfo may still return stale data for a
+-- few polls after delist. We do not require it to be present /
+-- truthy — the previous version of this gate did, and on at least
+-- one client that meant the grid never emitted at all.
 local function activeEntryIsPvE()
-    if not (C_LFGList and C_LFGList.HasActiveEntry
-            and C_LFGList.GetActiveEntryInfo) then
-        return false
+    if not (C_LFGList and C_LFGList.GetActiveEntryInfo) then return false end
+    if C_LFGList.HasActiveEntry then
+        local ok, has = pcall(C_LFGList.HasActiveEntry)
+        if ok and has == false then return false end
     end
-    if not C_LFGList.HasActiveEntry() then return false end
     local entry = C_LFGList.GetActiveEntryInfo()
     if type(entry) ~= "table" then return false end
     if entry.activityID and isPvEActivity(entry.activityID) then
