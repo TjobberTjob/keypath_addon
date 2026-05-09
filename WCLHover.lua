@@ -368,8 +368,17 @@ end
 -- key or a raid. Returns false for PvP entries, custom listings, etc.
 -- The grid only emits in this case — when the user is browsing or
 -- applying to *other* groups, we stay hidden.
+--
+-- The HasActiveEntry() primary gate matters because GetActiveEntryInfo
+-- briefly continues to return the last entry's table after the player
+-- delists; without HasActiveEntry the grid stayed visible for several
+-- polls after the user pressed Stop Listing.
 local function activeEntryIsPvE()
-    if not (C_LFGList and C_LFGList.GetActiveEntryInfo) then return false end
+    if not (C_LFGList and C_LFGList.HasActiveEntry
+            and C_LFGList.GetActiveEntryInfo) then
+        return false
+    end
+    if not C_LFGList.HasActiveEntry() then return false end
     local entry = C_LFGList.GetActiveEntryInfo()
     if type(entry) ~= "table" then return false end
     if entry.activityID and isPvEActivity(entry.activityID) then
