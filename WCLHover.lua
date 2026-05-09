@@ -583,6 +583,22 @@ lfgEvents:SetScript("OnEvent", function(_, event)
             WCLScreenGrid.SetCellSize(WCLHoverLocalConfig.cellSize)
         end
     end
+    -- LFG_LIST_ACTIVE_ENTRY_UPDATE fires the instant the user presses
+    -- Stop Listing. Force-hide here so the grid doesn't linger while
+    -- GetActiveEntryInfo's stale table is still being returned by the
+    -- API on subsequent polls. Without this the QR cells visibly
+    -- persisted on screen after delisting.
+    if event == "LFG_LIST_ACTIVE_ENTRY_UPDATE"
+       and C_LFGList and C_LFGList.HasActiveEntry then
+        local ok, has = pcall(C_LFGList.HasActiveEntry)
+        if ok and has == false then
+            if WCLScreenGrid and WCLScreenGrid.Hide then
+                pcall(WCLScreenGrid.Hide)
+            end
+            forceNextRefresh()
+            return
+        end
+    end
     forceNextRefresh()
     refreshScreenGrid()
 end)
