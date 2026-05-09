@@ -1,0 +1,11 @@
+## Interface: 120005, 120001, 120000, 110207, 110200
+## Title: KeyPath Companion
+## Notes: Live Warcraft Logs parses for your LFG applicants. Paired with the KeyPath Companion desktop app.
+## Author: tr
+## Version: 0.2
+## SavedVariablesPerCharacter: WCLHoverDB
+
+Bindings.xml
+WCLHover.lua
+ScreenGrid.lua
+LocalConfig.lua
