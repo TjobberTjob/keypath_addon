@@ -520,11 +520,20 @@ local function refreshScreenGrid()
         lastBuiltPayload = nil
         return
     end
-    if payload == lastBuiltPayload then return end
-    lastBuiltPayload = payload
     if payload then
-        pcall(WCLScreenGrid.Render, payload)
+        if payload ~= lastBuiltPayload then
+            lastBuiltPayload = payload
+            pcall(WCLScreenGrid.Render, payload)
+        end
     else
+        -- ALWAYS hide on nil payload, even if lastBuiltPayload is
+        -- already nil. The previous "skip if equal" short-circuit
+        -- meant the grid stayed visible after a delist whenever the
+        -- in-game frame somehow survived an earlier Hide call (e.g.
+        -- another addon force-shows it, or Blizzard re-renders on a
+        -- subsequent state change). Calling Hide unconditionally is
+        -- cheap (no-op when already hidden) and self-healing.
+        lastBuiltPayload = nil
         pcall(WCLScreenGrid.Hide)
     end
 end
