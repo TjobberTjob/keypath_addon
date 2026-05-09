@@ -673,7 +673,15 @@ SlashCmdList["WCLHOVER"] = function(msg)
     if cellSz then
         if WCLScreenGrid and WCLScreenGrid.SetCellSize
            and WCLScreenGrid.SetCellSize(cellSz) then
-            chatPrint("Grid cell size = " .. cellSz .. " px.")
+            -- SetCellSize tears down the texture pool but doesn't
+            -- trigger a re-render on its own. Without this the next
+            -- refreshScreenGrid would no-op (payload cache says
+            -- "same as last time") and the grid would stay blank
+            -- until something else changed. Forcing a refresh here
+            -- redraws at the new size immediately, which is what the
+            -- companion's auto-find sweep relies on.
+            forceNextRefresh()
+            refreshScreenGrid()
         else
             chatPrint("Invalid size (accepted range 2–16).")
         end
