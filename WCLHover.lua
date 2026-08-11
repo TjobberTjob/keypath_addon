@@ -7,7 +7,12 @@
 --   3. Press C (while still holding Ctrl) → OS-native Ctrl+C copies the URL.
 --   4. Popup auto-dismisses; wcl_checker.py overlay fires from the clipboard.
 
-local DEFAULT_ZONE = 47  -- current M+ season zone id on warcraftlogs.com
+-- Current M+ season zone id on warcraftlogs.com (Midnight Season 2).
+-- Only affects the URL this addon puts on the clipboard, i.e. what you
+-- see if you paste it into a browser: the companion ignores the zone in
+-- the pasted URL and fetches whichever season is picked in its title-bar
+-- Season dropdown. Bump this when a new season's zone goes live.
+local DEFAULT_ZONE = 56
 
 BINDING_HEADER_WCLHOVER = "WCL Hover"
 _G["BINDING_NAME_WCLHOVER_SHOW"]   = "Copy WCL URL for hovered LFG player"
